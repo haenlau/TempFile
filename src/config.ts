@@ -1,16 +1,15 @@
 import type { AppConfig, Env, LargeStorageBackend } from "./types";
 
 const MIB = 1024 * 1024;
-const DEFAULT_WEBDAV_BASE_URL = "https://higa.teracloud.jp/dav/air1/";
 
 const MAX_UPLOAD_BYTES = 99 * MIB;
 const KV_MAX_BYTES = 24 * MIB;
 const EXPIRATION_TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_FILE_COUNT = 20;
 
-function normalizeDirectoryUrl(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return DEFAULT_WEBDAV_BASE_URL;
+function normalizeDirectoryUrl(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
 
@@ -36,6 +35,6 @@ export function getConfig(env: Env): AppConfig {
     expirationTtlSeconds: EXPIRATION_TTL_SECONDS,
     maxFileCount: MAX_FILE_COUNT,
     largeStorageBackend: parseLargeStorageBackend(env.LARGE_STORAGE_BACKEND),
-    webdavBaseUrl: normalizeDirectoryUrl(env.WEBDAV_URL ?? env.WEBDAV_BASE_URL ?? DEFAULT_WEBDAV_BASE_URL),
+    webdavBaseUrl: normalizeDirectoryUrl(env.WEBDAV_URL),
   };
 }

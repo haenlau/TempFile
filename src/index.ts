@@ -1,6 +1,6 @@
 import { getConfig } from "./config";
 import { HTML } from "./html";
-import { sendWeComNotification } from "./notify";
+import { sendNotifications } from "./notify";
 import {
   getStoredFileResponse,
   normalizeUploadBuffer,
@@ -151,7 +151,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   let notifyError: string | null = null;
 
   try {
-    await sendWeComNotification(env, {
+    await sendNotifications(env, {
       filename,
       size,
       downloadUrl,

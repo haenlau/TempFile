@@ -16,8 +16,16 @@ function getAuthorizationHeader(env: Env): string {
   return `Basic ${btoa(`${account}:${password}`)}`;
 }
 
+function requireWebDavBaseUrl(config: AppConfig): string {
+  if (!config.webdavBaseUrl) {
+    throw new Error("WEBDAV_URL must be configured when LARGE_STORAGE_BACKEND=webdav.");
+  }
+
+  return config.webdavBaseUrl;
+}
+
 export function buildWebDavUrl(config: AppConfig, filename: string): string {
-  return `${config.webdavBaseUrl}${encodeURIComponent(filename)}`;
+  return `${requireWebDavBaseUrl(config)}${encodeURIComponent(filename)}`;
 }
 
 export async function uploadToWebDav(

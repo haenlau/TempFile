@@ -6,7 +6,8 @@ export interface Env {
   WEBDAV_PASSWORD?: string;
   WEBDAV_URL?: string;
   WECOM_WEBHOOK_URL?: string;
-  WEBDAV_BASE_URL?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
   PUBLIC_BASE_URL?: string;
   S3_ENDPOINT?: string;
   S3_BUCKET?: string;
@@ -23,7 +24,7 @@ export interface AppConfig {
   expirationTtlSeconds: number;
   maxFileCount: number;
   largeStorageBackend: LargeStorageBackend;
-  webdavBaseUrl: string;
+  webdavBaseUrl?: string;
 }
 
 export type StorageKind = "kv" | "r2" | "s3" | "webdav";

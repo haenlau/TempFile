@@ -30,7 +30,7 @@ Air1 TempFile 是部署在 Cloudflare 上的临时文件上传站。这个仓库
 - 小文件存入 Cloudflare KV。
 - 大文件可选转存 R2、S3 或 WebDAV。
 - 多文件自动打包为 ZIP。
-- 上传成功后可发送企业微信机器人通知。
+- 上传成功后可发送企业微信或 Telegram Bot 通知，也可以两个通道同时发送。
 
 ## 项目结构
 
@@ -43,7 +43,7 @@ src/
   r2.ts         # Cloudflare R2 后端
   s3.ts         # S3 / S3-compatible 后端
   webdav.ts     # WebDAV 后端
-  notify.ts     # 企业微信通知
+  notify.ts     # 企业微信 / Telegram 通知
   utils.ts      # 通用工具
 ```
 
@@ -64,7 +64,7 @@ src/
 然后进入 Pages 项目的 Settings -> Functions：
 
 - Compatibility date 设置为 `2026-07-06` 或更新日期。
-- Bindings 和环境变量都通过 Web UI 添加。
+- Bindings、Environment variables 和 Secrets 都通过 Web UI 添加。
 
 构建完成后，在 Pages 项目的 Custom domains 中绑定 `tmp.air1.cn`。如果这个域名当前还挂在旧 Worker route 上，需要先移除旧 route，或者让 DNS/路由指向新的 Pages 项目。
 
@@ -76,7 +76,7 @@ src/
 | --- | --- | --- | --- |
 | KV namespace binding | `TEMP_STORE` | 是 | 保存短链索引和小文件内容。 |
 
-这个模式下不需要配置 `WEBDAV_ACCOUNT`、`WEBDAV_PASSWORD`、S3 或 R2。
+这个模式下不需要配置 WebDAV、S3、R2 或通知变量。
 
 ## 可选通用变量
 
@@ -84,7 +84,25 @@ src/
 | --- | --- | --- |
 | `LARGE_STORAGE_BACKEND` | 否 | 大文件后端。可选 `none`、`r2`、`s3`、`webdav`，默认 `none`。 |
 | `PUBLIC_BASE_URL` | 否 | 生成下载链接时使用的公开域名，默认使用当前请求域名。可设为 `https://tmp.air1.cn/`。 |
-| `WECOM_WEBHOOK_URL` | 否 | 企业微信机器人 webhook，不填则跳过通知。 |
+
+## 通知通道
+
+通知通道按变量启用：只配置企业微信就只发企业微信，只配置 Telegram 就只发 Telegram，两组都配置就两个通道都发。
+
+### 企业微信 Webhook
+
+| 变量名 | 必填 | 说明 |
+| --- | --- | --- |
+| `WECOM_WEBHOOK_URL` | 否 | 企业微信机器人 webhook。配置后启用企业微信通知。 |
+
+### Telegram Bot
+
+| 变量名 | 必填 | 说明 |
+| --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | 否 | Telegram Bot token。和 `TELEGRAM_CHAT_ID` 一起配置后启用 Telegram 通知。 |
+| `TELEGRAM_CHAT_ID` | 否 | Telegram 接收方 chat id，可以是用户、群组或频道 id。 |
+
+`TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 必须成对配置。只填其中一个时，上传仍会成功，但返回里会提示通知失败。
 
 ## 大文件后端：R2
 
@@ -116,18 +134,16 @@ src/
 
 ## 大文件后端：WebDAV
 
-适合继续沿用原来的 TeraCloud/WebDAV 存储。
+适合已有 WebDAV 存储。项目不再内置默认 WebDAV 提供商，必须显式配置 WebDAV 目录地址。
 
 需要配置：
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
 | `LARGE_STORAGE_BACKEND` | 是 | 设为 `webdav`。 |
-| `WEBDAV_URL` | 否 | WebDAV 目录地址，默认 `https://higa.teracloud.jp/dav/air1/`。 |
+| `WEBDAV_URL` | 是 | WebDAV 目录地址，例如 `https://example.com/dav/tempfile/`。 |
 | `WEBDAV_ACCOUNT` | 是 | WebDAV 账号。 |
 | `WEBDAV_PASSWORD` | 是 | WebDAV 密码。建议作为 Secret 保存。 |
-
-兼容旧变量名：`WEBDAV_BASE_URL` 仍然可用，但新配置建议使用 `WEBDAV_URL`。
 
 ## 本地开发
 
@@ -149,10 +165,18 @@ npm run dev
 
 ```ini
 LARGE_STORAGE_BACKEND=webdav
-WEBDAV_URL=https://higa.teracloud.jp/dav/air1/
+WEBDAV_URL=https://example.com/dav/tempfile/
 WEBDAV_ACCOUNT=your-webdav-account
 WEBDAV_PASSWORD=your-webdav-password
 PUBLIC_BASE_URL=http://localhost:8788/
+```
+
+如需测试通知：
+
+```ini
+WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...
+TELEGRAM_BOT_TOKEN=123456:your-bot-token
+TELEGRAM_CHAT_ID=123456789
 ```
 
 ## 手动部署
