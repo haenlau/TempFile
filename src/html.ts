@@ -467,13 +467,6 @@ export const HTML = `<!DOCTYPE html>
  };
  div.appendChild(copyBtn);
 
- if (res.notifyError) {
- const errorMsg = document.createElement('div');
- errorMsg.className = 'error-msg';
- errorMsg.textContent = '\u26A0\uFE0F \u901A\u77E5\u5931\u8D25\uFF1A' + res.notifyError;
- div.appendChild(errorMsg);
- }
-
  resultsList.appendChild(div);
  resultCard.classList.add('show');
  } else {

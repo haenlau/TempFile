@@ -87,7 +87,7 @@ function isUploadFile(value: unknown): value is File {
   );
 }
 
-async function handleUpload(request: Request, env: Env): Promise<Response> {
+async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     return jsonResponse({ error: "Uploads must use multipart/form-data." }, { status: 400 });
@@ -148,18 +148,17 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
   });
 
   const downloadUrl = buildDownloadUrl(request, env, fileId);
-  let notifyError: string | null = null;
 
-  try {
-    await sendNotifications(env, {
+  ctx.waitUntil(
+    sendNotifications(env, {
       filename,
       size,
       downloadUrl,
       metadata,
-    });
-  } catch (error) {
-    notifyError = safeMessage(error);
-  }
+    }).catch((error) => {
+      console.error("Notification failed:", error);
+    }),
+  );
 
   return jsonResponse({
     downloadUrl,
@@ -168,12 +167,11 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     size,
     storage: metadata.storage,
     expiresAt: metadata.expiresAt,
-    notifyError,
   });
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     try {
@@ -194,7 +192,7 @@ export default {
       }
 
       if (request.method === "POST" && UPLOAD_PATHS.has(url.pathname)) {
-        return handleUpload(request, env);
+        return handleUpload(request, env, ctx);
       }
 
       if (request.method === "GET") {

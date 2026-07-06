@@ -102,7 +102,7 @@ src/
 | `TELEGRAM_BOT_TOKEN` | 否 | Telegram Bot token。和 `TELEGRAM_CHAT_ID` 一起配置后启用 Telegram 通知。 |
 | `TELEGRAM_CHAT_ID` | 否 | Telegram 接收方 chat id，可以是用户、群组或频道 id。 |
 
-`TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 必须成对配置。只填其中一个时，上传仍会成功，但返回里会提示通知失败。
+通知会在后台无感发送，成功或失败都不会展示在上传页面，也不会影响上传结果。`TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 必须成对配置；只填其中一个时，通知会失败并写入运行日志。
 
 ## 大文件后端：R2
 
