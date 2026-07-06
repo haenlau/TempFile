@@ -18,7 +18,6 @@ function getStorageLabel(metadata: FileRecordMetadata): string {
   if (metadata.storage === "kv") return "KV";
   if (metadata.storage === "r2") return "R2";
   if (metadata.storage === "s3") return "S3";
-  if (metadata.storage === "webdav-chunked") return "WebDAV 分片";
   return "WebDAV";
 }
 

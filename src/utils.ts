@@ -63,7 +63,7 @@ export async function generateUniqueFileId(env: Env): Promise<string> {
     if (RESERVED_PATHS.has(id)) continue;
 
     const existing = await env.TEMP_STORE.get(id);
-    if (existing === null) return id;
+    if (!existing) return id;
   }
 
   return createFileId();
@@ -122,8 +122,4 @@ export function makeStorageObjectKey(prefix: "file" | "zip", fileId: string, fil
     .trim() || "upload";
 
   return `${prefix}_${fileId}_${safeName}`;
-}
-
-export function makeChunkStorageObjectKey(objectPrefix: string, index: number): string {
-  return `${objectPrefix}.part${String(index).padStart(4, "0")}`;
 }
