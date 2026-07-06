@@ -383,45 +383,29 @@ export const HTML = `<!DOCTYPE html>
  }
  });
 
- // ====== \u65B0\u589E\uFF1A\u4E0A\u4F20\u8FDB\u5EA6\u51FD\u6570 ======
+ const DIRECT_UPLOAD_LIMIT = 99 * 1024 * 1024;
+ const MAX_UPLOAD_LIMIT = 2 * 1024 * 1024 * 1024;
+
  function updateProgress(loaded, total) {
- const percent = Math.round((loaded / total) * 100);
+ const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
  progressFill.style.width = percent + '%';
  progressText.textContent = '\u4E0A\u4F20\u4E2D... ' + percent + '%';
- // \u786E\u4FDD\u4E0A\u4F20\u4E2D\u72B6\u6001
  progressFill.classList.add('uploading');
  progressFill.classList.remove('completed');
  }
 
- async function uploadFiles() {
- const files = Array.from(fileInput.files);
- if (!files.length) return alert('\u8BF7\u9009\u62E9\u81F3\u5C11\u4E00\u4E2A\u6587\u4EF6');
-
- let totalSize = 0;
- for (const file of files) {
- totalSize += file.size;
- if (file.size > 99 * 1024 * 1024) {
- return alert('\u300C' + file.name + '\u300D\u4E0D\u80FD\u8D85\u8FC7 99MB');
- }
- }
- if (totalSize > 99 * 1024 * 1024) {
- return alert('\u5355\u6B21\u4E0A\u4F20\u603B\u5927\u5C0F\u4E0D\u80FD\u8D85\u8FC7 99MB');
- }
-
+ function prepareUploadUI() {
  resultCard.classList.remove('show');
- resultsList.innerHTML = ''; // Clear previous results
- // ====== \u4FEE\u6539\uFF1A\u66F4\u65B0\u6309\u94AE\u72B6\u6001 ======
+ resultsList.innerHTML = '';
  uploadBtn.disabled = true;
  uploadBtn.textContent = '\u4E0A\u4F20\u4E2D...';
- progressTrack.style.display = 'block'; // \u663E\u793A\u8FDB\u5EA6\u6761
- progressText.style.display = 'block'; // \u663E\u793A\u8FDB\u5EA6\u6587\u672C
- progressFill.style.width = '0%'; // \u91CD\u7F6E\u8FDB\u5EA6
- // \u786E\u4FDD\u521D\u59CB\u72B6\u6001
- progressFill.classList.remove('completed'); // \u79FB\u9664\u5B8C\u6210\u72B6\u6001
- progressFill.classList.add('uploading'); // \u6DFB\u52A0\u4E0A\u4F20\u4E2D\u72B6\u6001
-
- const formData = new FormData();
- files.forEach(f => formData.append('file', f));
+ progressTrack.style.display = 'block';
+ progressText.style.display = 'block';
+ progressFill.style.width = '0%';
+ progressFill.classList.remove('completed');
+ progressFill.classList.add('uploading');
+ progressText.textContent = '\u4E0A\u4F20\u4E2D... 0%';
+ }
 
  function resetUploadUI() {
  uploadBtn.disabled = false;
@@ -431,23 +415,14 @@ export const HTML = `<!DOCTYPE html>
  progressText.textContent = '\u4E0A\u4F20\u4E2D... 0%';
  }
 
- try {
- // \u4F7F\u7528 XMLHttpRequest \u5B9E\u73B0\u8FDB\u5EA6\u76D1\u542C
- const xhr = new XMLHttpRequest();
-
- // \u76D1\u542C\u4E0A\u4F20\u8FDB\u5EA6
- xhr.upload.addEventListener('progress', (e) => {
- if (e.lengthComputable) {
- updateProgress(e.loaded, e.total);
+ function markProgressCompleted() {
+ progressFill.style.width = '100%';
+ progressFill.classList.remove('uploading');
+ progressFill.classList.add('completed');
+ progressText.textContent = '\u4E0A\u4F20\u5B8C\u6210';
  }
- });
 
- // \u76D1\u542C\u8BF7\u6C42\u5B8C\u6210
- xhr.addEventListener('load', () => {
- if (xhr.status >= 200 && xhr.status < 300) {
- try {
- const res = JSON.parse(xhr.responseText);
- if (res.downloadUrl) {
+ function showUploadResult(res, files) {
  const div = document.createElement('div');
  div.className = 'result-item';
 
@@ -474,56 +449,165 @@ export const HTML = `<!DOCTYPE html>
 
  resultsList.appendChild(div);
  resultCard.classList.add('show');
- } else {
- alert(res.error || '\u4E0A\u4F20\u5931\u8D25');
  }
- } catch (parseError) {
- console.error('JSON parse error:', parseError);
- alert('\u670D\u52A1\u5668\u8FD4\u56DE\u683C\u5F0F\u9519\u8BEF');
- }
- } else {
- console.error('Upload error:', xhr.statusText);
- let message = xhr.statusText || '\u4E0A\u4F20\u5931\u8D25';
+
+ function getXhrError(xhr, fallback) {
+ let message = xhr.statusText || fallback;
  try {
  const errorRes = JSON.parse(xhr.responseText || '{}');
  if (errorRes.error) message = errorRes.error;
  } catch (parseError) {}
- alert('\u4E0A\u4F20\u5931\u8D25: ' + message);
+ return message;
  }
- resetUploadUI();
+
+ async function readJsonOrThrow(response, fallback) {
+ let data = null;
+ try {
+ data = await response.json();
+ } catch (parseError) {}
+
+ if (!response.ok) {
+ throw new Error((data && data.error) || fallback);
+ }
+
+ if (!data) {
+ throw new Error('\u670D\u52A1\u5668\u8FD4\u56DE\u683C\u5F0F\u9519\u8BEF');
+ }
+
+ return data;
+ }
+
+ function uploadDirectFiles(files) {
+ return new Promise((resolve, reject) => {
+ const formData = new FormData();
+ files.forEach(f => formData.append('file', f));
+
+ const xhr = new XMLHttpRequest();
+ xhr.upload.addEventListener('progress', (e) => {
+ if (e.lengthComputable) updateProgress(e.loaded, e.total);
  });
 
- xhr.addEventListener('error', () => {
- console.error('Network error during upload');
- alert('\u7F51\u7EDC\u9519\u8BEF\uFF0C\u8BF7\u91CD\u8BD5');
- resetUploadUI();
+ xhr.addEventListener('load', () => {
+ if (xhr.status >= 200 && xhr.status < 300) {
+ try {
+ const res = JSON.parse(xhr.responseText);
+ if (res.downloadUrl) {
+ resolve(res);
+ } else {
+ reject(new Error(res.error || '\u4E0A\u4F20\u5931\u8D25'));
+ }
+ } catch (parseError) {
+ reject(new Error('\u670D\u52A1\u5668\u8FD4\u56DE\u683C\u5F0F\u9519\u8BEF'));
+ }
+ } else {
+ reject(new Error(getXhrError(xhr, '\u4E0A\u4F20\u5931\u8D25')));
+ }
  });
 
- xhr.addEventListener('abort', () => {
- console.log('Upload aborted');
- alert('\u4E0A\u4F20\u88AB\u53D6\u6D88');
- resetUploadUI();
- });
-
- // \u53D1\u9001\u8BF7\u6C42
+ xhr.addEventListener('error', () => reject(new Error('\u7F51\u7EDC\u9519\u8BEF\uFF0C\u8BF7\u91CD\u8BD5')));
+ xhr.addEventListener('abort', () => reject(new Error('\u4E0A\u4F20\u88AB\u53D6\u6D88')));
  xhr.open('POST', '/api/upload-public');
  xhr.send(formData);
-
- } catch (e) {
- console.error('Upload error:', e);
- alert('\u4E0A\u4F20\u521D\u59CB\u5316\u5931\u8D25');
- resetUploadUI();
- } finally {
- // \u6CE8\u610F\uFF1A\u8FD9\u91CC\u4E0D\u518D\u7ACB\u5373\u9690\u85CF\u8FDB\u5EA6\u6761\uFF0C\u56E0\u4E3A\u8FDB\u5EA6\u7531 xhr \u4E8B\u4EF6\u63A7\u5236
- // \u5F53 xhr \u5B8C\u6210\u6216\u51FA\u9519\u65F6\uFF0C\u8FDB\u5EA6\u6761\u548C\u6587\u672C\u7684\u9690\u85CF\u5E94\u5728\u4E8B\u4EF6\u5904\u7406\u51FD\u6570\u4E2D\u5B8C\u6210
- // \u4E3A\u4E86\u7B80\u5316\uFF0C\u6211\u4EEC\u53EF\u4EE5\u5728 finally \u91CC\u9690\u85CF\uFF0C\u4F46\u5B9E\u9645\u8FDB\u5EA6\u66F4\u65B0\u7531 xhr \u63A7\u5236
- // uploadBtn.disabled = false; // \u79FB\u52A8\u5230 xhr \u4E8B\u4EF6\u5904\u7406\u4E2D
- // progressTrack.style.display = 'none'; // \u79FB\u52A8\u5230 xhr \u4E8B\u4EF6\u5904\u7406\u4E2D
- // progressText.style.display = 'none'; // \u79FB\u52A8\u5230 xhr \u4E8B\u4EF6\u5904\u7406\u4E2D
+ });
  }
 
+ function uploadChunk(uploadId, index, chunk, loadedBefore, totalSize) {
+ return new Promise((resolve, reject) => {
+ const xhr = new XMLHttpRequest();
+ xhr.upload.addEventListener('progress', (e) => {
+ if (e.lengthComputable) updateProgress(loadedBefore + e.loaded, totalSize);
+ });
 
+ xhr.addEventListener('load', () => {
+ if (xhr.status >= 200 && xhr.status < 300) {
+ resolve();
+ } else {
+ reject(new Error(getXhrError(xhr, '\u5206\u7247\u4E0A\u4F20\u5931\u8D25')));
+ }
+ });
 
+ xhr.addEventListener('error', () => reject(new Error('\u7F51\u7EDC\u9519\u8BEF\uFF0C\u8BF7\u91CD\u8BD5')));
+ xhr.addEventListener('abort', () => reject(new Error('\u4E0A\u4F20\u88AB\u53D6\u6D88')));
+ xhr.open('PUT', '/api/upload/chunk/' + encodeURIComponent(uploadId) + '/' + index);
+ xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+ xhr.send(chunk);
+ });
+ }
+
+ async function uploadLargeFile(file) {
+ const initResponse = await fetch('/api/upload/chunk/init', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ filename: file.name || 'upload',
+ size: file.size,
+ contentType: file.type || 'application/octet-stream'
+ })
+ });
+ const session = await readJsonOrThrow(initResponse, '\u5206\u7247\u4E0A\u4F20\u521D\u59CB\u5316\u5931\u8D25');
+
+ if (!session.uploadId || !session.chunkSize || !session.chunkCount) {
+ throw new Error('\u5206\u7247\u4E0A\u4F20\u521D\u59CB\u5316\u5931\u8D25');
+ }
+
+ let uploaded = 0;
+ for (let index = 0; index < session.chunkCount; index += 1) {
+ const start = index * session.chunkSize;
+ const end = Math.min(file.size, start + session.chunkSize);
+ const chunk = file.slice(start, end);
+ await uploadChunk(session.uploadId, index, chunk, uploaded, file.size);
+ uploaded += chunk.size;
+ updateProgress(uploaded, file.size);
+ }
+
+ const completeResponse = await fetch('/api/upload/chunk/complete', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ uploadId: session.uploadId })
+ });
+
+ return readJsonOrThrow(completeResponse, '\u5206\u7247\u4E0A\u4F20\u5B8C\u6210\u5931\u8D25');
+ }
+
+ async function uploadFiles() {
+ const files = Array.from(fileInput.files);
+ if (!files.length) return alert('\u8BF7\u9009\u62E9\u81F3\u5C11\u4E00\u4E2A\u6587\u4EF6');
+
+ let totalSize = 0;
+ for (const file of files) {
+ totalSize += file.size;
+ if (file.size > MAX_UPLOAD_LIMIT) {
+ return alert('\u300C' + file.name + '\u300D\u4E0D\u80FD\u8D85\u8FC7 2GB');
+ }
+ }
+
+ if (totalSize > MAX_UPLOAD_LIMIT) {
+ return alert('\u5355\u6B21\u4E0A\u4F20\u603B\u5927\u5C0F\u4E0D\u80FD\u8D85\u8FC7 2GB');
+ }
+
+ if (files.length > 1 && totalSize > DIRECT_UPLOAD_LIMIT) {
+ return alert('\u591A\u6587\u4EF6\u81EA\u52A8\u6253\u5305\u6700\u591A 99MB\uFF1B\u8D85\u8FC7 99MB \u8BF7\u5148\u538B\u7F29\u6210\u4E00\u4E2A\u6587\u4EF6\u518D\u4E0A\u4F20');
+ }
+
+ prepareUploadUI();
+
+ try {
+ const res = files.length === 1 && files[0].size > DIRECT_UPLOAD_LIMIT
+ ? await uploadLargeFile(files[0])
+ : await uploadDirectFiles(files);
+
+ if (!res.downloadUrl) {
+ throw new Error(res.error || '\u4E0A\u4F20\u5931\u8D25');
+ }
+
+ markProgressCompleted();
+ showUploadResult(res, files);
+ } catch (e) {
+ console.error('Upload error:', e);
+ alert('\u4E0A\u4F20\u5931\u8D25: ' + (e && e.message ? e.message : '\u8BF7\u91CD\u8BD5'));
+ } finally {
+ resetUploadUI();
+ }
  }
 
  // ====== \u517C\u5BB9\u6027\u590D\u5236\u51FD\u6570 ======

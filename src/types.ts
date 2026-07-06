@@ -20,14 +20,17 @@ export type LargeStorageBackend = "none" | "r2" | "s3" | "webdav";
 
 export interface AppConfig {
   maxUploadBytes: number;
+  directUploadMaxBytes: number;
   kvMaxBytes: number;
+  webdavChunkBytes: number;
   expirationTtlSeconds: number;
+  chunkedUploadSessionTtlSeconds: number;
   maxFileCount: number;
   largeStorageBackend: LargeStorageBackend;
   webdavBaseUrl?: string;
 }
 
-export type StorageKind = "kv" | "r2" | "s3" | "webdav";
+export type StorageKind = "kv" | "r2" | "s3" | "webdav" | "webdav-chunked";
 
 export interface FileRecordMetadata {
   filename: string;
@@ -38,6 +41,9 @@ export interface FileRecordMetadata {
   createdAt: string;
   expiresAt: string;
   objectKey?: string;
+  objectPrefix?: string;
+  chunkSize?: number;
+  chunkCount?: number;
   webdavFilename?: string;
 }
 
@@ -46,4 +52,17 @@ export interface BufferedUpload {
   contentType: string;
   size: number;
   data: Uint8Array;
+}
+
+export interface ChunkedUploadSession {
+  uploadId: string;
+  fileId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  chunkSize: number;
+  chunkCount: number;
+  objectPrefix: string;
+  createdAt: string;
+  expiresAt: string;
 }
