@@ -1,6 +1,5 @@
 export interface Env {
   TEMP_STORE: KVNamespace;
-  UPLOAD_TOKEN?: string;
   WEBDAV_ACCOUNT?: string;
   WEBDAV_PASSWORD?: string;
   WECOM_WEBHOOK_URL?: string;

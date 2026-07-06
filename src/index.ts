@@ -1,4 +1,3 @@
-import { requireUploadToken } from "./auth";
 import { getConfig } from "./config";
 import { HTML } from "./html";
 import { sendWeComNotification } from "./notify";
@@ -37,7 +36,7 @@ function optionsResponse(request: Request): Response {
   const currentOrigin = new URL(request.url).origin;
   const headers = new Headers({
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Upload-Token",
+    "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400",
   });
 
@@ -89,9 +88,6 @@ function isUploadFile(value: unknown): value is File {
 }
 
 async function handleUpload(request: Request, env: Env): Promise<Response> {
-  const authError = requireUploadToken(request, env);
-  if (authError) return authError;
-
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
     return jsonResponse({ error: "Uploads must use multipart/form-data." }, { status: 400 });
