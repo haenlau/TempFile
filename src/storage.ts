@@ -41,6 +41,14 @@ interface CompletedChunkedUpload {
   metadata: FileRecordMetadata;
 }
 
+interface ChunkedWebDavSource {
+  objectPrefix: string;
+  contentType: string;
+  size: number;
+  chunkSize: number;
+  chunkCount: number;
+}
+
 const CHUNK_UPLOAD_SESSION_PREFIX = "chunk-upload:";
 const CHUNK_UPLOAD_RECEIPT_PREFIX = "chunk-upload-part:";
 
@@ -100,6 +108,40 @@ function getExpectedChunkSize(session: ChunkedUploadSession, index: number): num
   }
 
   return session.chunkSize;
+}
+
+function getExpectedSourceChunkSize(source: ChunkedWebDavSource, index: number): number {
+  if (index === source.chunkCount - 1) {
+    return source.size - source.chunkSize * index;
+  }
+
+  return source.chunkSize;
+}
+
+function getChunkedWebDavSourceFromMetadata(
+  metadata: FileRecordMetadata,
+): ChunkedWebDavSource | null {
+  if (!metadata.objectPrefix || !metadata.chunkSize || !metadata.chunkCount) {
+    return null;
+  }
+
+  return {
+    objectPrefix: metadata.objectPrefix,
+    contentType: metadata.contentType,
+    size: metadata.size,
+    chunkSize: metadata.chunkSize,
+    chunkCount: metadata.chunkCount,
+  };
+}
+
+function getChunkedWebDavSourceFromSession(session: ChunkedUploadSession): ChunkedWebDavSource {
+  return {
+    objectPrefix: session.objectPrefix,
+    contentType: session.contentType,
+    size: session.size,
+    chunkSize: session.chunkSize,
+    chunkCount: session.chunkCount,
+  };
 }
 
 export function zipUploads(files: BufferedUpload[]): Uint8Array {
@@ -262,17 +304,18 @@ export async function completeWebDavChunkedUpload(
     throw new Error(`还有分片未上传完成：${missingIndexes.slice(0, 8).join(", ")}。`);
   }
 
+  await mergeWebDavChunksToSingleFile(env, config, getChunkedWebDavSourceFromSession(session));
+
   const metadata: FileRecordMetadata = {
     filename: session.filename,
     contentType: session.contentType,
-    storage: "webdav-chunked",
+    storage: "webdav",
     size: session.size,
     isZip: false,
     createdAt: session.createdAt,
     expiresAt: session.expiresAt,
-    objectPrefix: session.objectPrefix,
-    chunkSize: session.chunkSize,
-    chunkCount: session.chunkCount,
+    objectKey: session.objectPrefix,
+    webdavFilename: session.objectPrefix,
   };
 
   await env.TEMP_STORE.put(session.fileId, "", {
@@ -290,93 +333,127 @@ export async function completeWebDavChunkedUpload(
   return { session, metadata };
 }
 
-function getExpectedMetadataChunkSize(metadata: FileRecordMetadata, index: number): number {
-  if (!metadata.chunkSize || !metadata.chunkCount) {
+async function pipeWebDavChunksToWriter(
+  env: Env,
+  config: AppConfig,
+  source: ChunkedWebDavSource,
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+): Promise<void> {
+  let totalBytes = 0;
+
+  for (let index = 0; index < source.chunkCount; index += 1) {
+    const response = await downloadFromWebDav(
+      env,
+      config,
+      makeChunkStorageObjectKey(source.objectPrefix, index),
+    );
+
+    if (!response.ok || !response.body) {
+      throw new Error(`WebDAV chunk download failed with HTTP ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    let chunkBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        chunkBytes += value.byteLength;
+        totalBytes += value.byteLength;
+        await writer.write(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    const expectedChunkSize = getExpectedSourceChunkSize(source, index);
+    if (chunkBytes !== expectedChunkSize) {
+      throw new Error(
+        `WebDAV chunk ${index} size mismatch: expected ${expectedChunkSize}, got ${chunkBytes}.`,
+      );
+    }
+  }
+
+  if (totalBytes !== source.size) {
+    throw new Error(
+      `WebDAV chunked merge size mismatch: expected ${source.size}, got ${totalBytes}.`,
+    );
+  }
+}
+
+async function mergeWebDavChunksToSingleFile(
+  env: Env,
+  config: AppConfig,
+  source: ChunkedWebDavSource,
+): Promise<void> {
+  const stream = new FixedLengthStream(source.size);
+  const writer = stream.writable.getWriter();
+  const upload = uploadToWebDav(env, config, source.objectPrefix, source.contentType, stream.readable);
+
+  try {
+    await pipeWebDavChunksToWriter(env, config, source, writer);
+    await writer.close();
+    await upload;
+  } catch (error) {
+    try {
+      await writer.abort(error);
+    } catch {
+      // The upload may already have failed or consumed the stream.
+    }
+
+    await upload.catch(() => undefined);
+    throw error;
+  }
+}
+
+function buildMergedWebDavMetadata(metadata: FileRecordMetadata): FileRecordMetadata {
+  if (!metadata.objectPrefix) {
     throw new Error("Invalid chunked WebDAV record.");
   }
 
-  if (index === metadata.chunkCount - 1) {
-    return metadata.size - metadata.chunkSize * index;
-  }
-
-  return metadata.chunkSize;
+  return {
+    filename: metadata.filename,
+    contentType: metadata.contentType,
+    storage: "webdav",
+    size: metadata.size,
+    isZip: metadata.isZip,
+    createdAt: metadata.createdAt,
+    expiresAt: metadata.expiresAt,
+    objectKey: metadata.objectPrefix,
+    webdavFilename: metadata.objectPrefix,
+  };
 }
 
-function streamWebDavChunks(
+async function migrateChunkedWebDavRecordToSingleFile(
   env: Env,
   config: AppConfig,
+  fileId: string,
   metadata: FileRecordMetadata,
-): { readable: ReadableStream<Uint8Array>; done: Promise<void> } {
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
+): Promise<FileRecordMetadata> {
+  const source = getChunkedWebDavSourceFromMetadata(metadata);
+  if (!source) {
+    throw new Error("Invalid chunked WebDAV record.");
+  }
 
-  const done = (async () => {
-    try {
-      if (!metadata.objectPrefix || !metadata.chunkCount) {
-        throw new Error("Invalid chunked WebDAV record.");
-      }
+  await mergeWebDavChunksToSingleFile(env, config, source);
+  const mergedMetadata = buildMergedWebDavMetadata(metadata);
+  const expiration = Math.floor(new Date(metadata.expiresAt).getTime() / 1000);
+  const putOptions: KVNamespacePutOptions = { metadata: mergedMetadata };
+  if (Number.isFinite(expiration)) {
+    putOptions.expiration = expiration;
+  }
 
-      let totalBytes = 0;
-      for (let index = 0; index < metadata.chunkCount; index += 1) {
-        const response = await downloadFromWebDav(
-          env,
-          config,
-          makeChunkStorageObjectKey(metadata.objectPrefix, index),
-        );
+  await env.TEMP_STORE.put(fileId, "", putOptions);
 
-        if (!response.ok || !response.body) {
-          throw new Error(`WebDAV chunk download failed with HTTP ${response.status}`);
-        }
-
-        const reader = response.body.getReader();
-        let chunkBytes = 0;
-        try {
-          while (true) {
-            const { done: readDone, value } = await reader.read();
-            if (readDone) break;
-            if (!value) continue;
-
-            chunkBytes += value.byteLength;
-            totalBytes += value.byteLength;
-            await writer.write(value);
-          }
-        } finally {
-          reader.releaseLock();
-        }
-
-        const expectedChunkSize = getExpectedMetadataChunkSize(metadata, index);
-        if (chunkBytes !== expectedChunkSize) {
-          throw new Error(
-            `WebDAV chunk ${index} size mismatch: expected ${expectedChunkSize}, got ${chunkBytes}.`,
-          );
-        }
-      }
-
-      if (totalBytes !== metadata.size) {
-        throw new Error(
-          `WebDAV chunked download size mismatch: expected ${metadata.size}, got ${totalBytes}.`,
-        );
-      }
-
-      await writer.close();
-    } catch (error) {
-      console.error("Chunked WebDAV download failed:", error);
-      try {
-        await writer.abort(error);
-      } catch {
-        // The client may already have closed the connection.
-      }
-    }
-  })();
-
-  return { readable, done };
+  return mergedMetadata;
 }
 
 export async function getStoredFileResponse(
   env: Env,
   config: AppConfig,
   fileId: string,
-  ctx?: ExecutionContext,
 ): Promise<Response> {
   const entry = await env.TEMP_STORE.getWithMetadata<FileRecordMetadata>(fileId, {
     type: "arrayBuffer",
@@ -454,15 +531,31 @@ export async function getStoredFileResponse(
   }
 
   if (metadata.storage === "webdav-chunked" && metadata.objectPrefix && metadata.chunkCount) {
-    headers.set("X-TempFile-Storage", "webdav-chunked");
-    headers.set("X-TempFile-Chunk-Count", String(metadata.chunkCount));
-    if (metadata.chunkSize) {
-      headers.set("X-TempFile-Chunk-Size", String(metadata.chunkSize));
+    let migratedMetadata: FileRecordMetadata;
+    try {
+      migratedMetadata = await migrateChunkedWebDavRecordToSingleFile(env, config, fileId, metadata);
+    } catch (error) {
+      console.error("Chunked WebDAV migration failed:", error);
+      return new Response("Storage unavailable", { status: 502 });
     }
 
-    const stream = streamWebDavChunks(env, config, metadata);
-    ctx?.waitUntil(stream.done);
-    return new Response(stream.readable, { status: 200, headers });
+    const objectKey = migratedMetadata.objectKey || migratedMetadata.webdavFilename;
+    if (!objectKey) {
+      return new Response("Invalid file record", { status: 500 });
+    }
+
+    let response: Response;
+    try {
+      response = await downloadFromWebDav(env, config, objectKey);
+    } catch {
+      return new Response("Storage unavailable", { status: 502 });
+    }
+
+    if (!response.ok || !response.body) {
+      return downloadUnavailableResponse();
+    }
+
+    return new Response(response.body, { status: 200, headers });
   }
 
   return new Response("Invalid file record", { status: 500 });
