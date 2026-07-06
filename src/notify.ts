@@ -6,6 +6,7 @@ interface NotifyInput {
   size: number;
   downloadUrl: string;
   metadata: FileRecordMetadata;
+  uploaderIp: string;
 }
 
 interface NotifyJob {
@@ -27,13 +28,14 @@ function buildNotificationText(input: NotifyInput): string {
   });
 
   return [
-    "Air1 TempFile: new file uploaded",
-    `File: ${input.filename}`,
-    `Size: ${formatBytes(input.size)}`,
-    `Storage: ${getStorageLabel(input.metadata)}`,
-    `Time: ${now}`,
-    `Expires: ${expiresAt}`,
-    `Download: ${input.downloadUrl}`,
+    "Air1 TempFile：新文件上传",
+    `文件名：${input.filename}`,
+    `大小：${formatBytes(input.size)}`,
+    `存储：${getStorageLabel(input.metadata)}`,
+    `上传 IP：${input.uploaderIp}`,
+    `时间：${now}`,
+    `过期：${expiresAt}`,
+    `下载地址：${input.downloadUrl}`,
   ].join("\n");
 }
 

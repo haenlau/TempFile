@@ -87,6 +87,17 @@ function isUploadFile(value: unknown): value is File {
   );
 }
 
+function getUploaderIp(request: Request): string {
+  const cfConnectingIp = request.headers.get("CF-Connecting-IP")?.trim();
+  if (cfConnectingIp) return cfConnectingIp;
+
+  const trueClientIp = request.headers.get("True-Client-IP")?.trim();
+  if (trueClientIp) return trueClientIp;
+
+  const forwardedFor = request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim();
+  return forwardedFor || "unknown";
+}
+
 async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
@@ -148,6 +159,7 @@ async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): 
   });
 
   const downloadUrl = buildDownloadUrl(request, env, fileId);
+  const uploaderIp = getUploaderIp(request);
 
   ctx.waitUntil(
     sendNotifications(env, {
@@ -155,6 +167,7 @@ async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): 
       size,
       downloadUrl,
       metadata,
+      uploaderIp,
     }).catch((error) => {
       console.error("Notification failed:", error);
     }),
