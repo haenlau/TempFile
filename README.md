@@ -4,6 +4,8 @@ Air1 TempFile 是部署在 Cloudflare 上的临时文件上传站。这个仓库
 
 当前推荐部署方式是 **Cloudflare Pages + Advanced Worker**：GitHub 推送后由 Pages 执行构建，输出 `dist/_worker.js`，运行时仍然是 Cloudflare Workers runtime。
 
+> 重要：本仓库故意不提交 `wrangler.toml`。这样 KV 绑定、环境变量和 Secrets 可以继续在 Cloudflare Dashboard 里管理，而不会出现“此项目的绑定通过 wrangler.toml 管理”的限制。
+
 ## 功能
 
 - 首页前端保持旧版 Air1 TempFile 样式和交互。
@@ -40,7 +42,11 @@ src/
 | Build command | `npm run build` |
 | Build output directory | `dist` |
 | Node.js version | 20 或 22 |
-| Compatibility date | `2026-07-06` |
+
+然后进入 Pages 项目的 Settings -> Functions：
+
+- Compatibility date 设置为 `2026-07-06` 或更新日期。
+- KV namespace bindings、Environment variables、Secrets 都在这里通过 Web UI 添加。
 
 构建完成后，在 Pages 项目的 Custom domains 中绑定 `tmp.air1.cn`。如果这个域名当前还挂在旧 Worker route 上，需要先移除旧 route，或者让 DNS/路由指向新的 Pages 项目。
 
@@ -48,7 +54,7 @@ src/
 
 在 Pages 项目里进入 Settings -> Functions，绑定以下资源。
 
-### KV namespace bindings
+### KV Namespace Bindings
 
 | Binding name | 必填 | 说明 |
 | --- | --- | --- |
@@ -56,7 +62,7 @@ src/
 
 建议 Production 和 Preview 都绑定 KV。Preview 可以使用单独的测试 KV。
 
-### Environment variables / Secrets
+### Environment Variables / Secrets
 
 | 变量名 | 必填 | 说明 |
 | --- | --- | --- |
@@ -72,6 +78,18 @@ src/
 | `UPLOAD_TOKEN` | 否 | 当前版本不使用。旧 Cloudflare 项目里如果已经绑定，保留也不会影响运行。 |
 
 不要把账号、密码、Webhook 写进 GitHub。Cloudflare Pages 里 Production 和 Preview 的变量是分开的，至少 Production 需要配置完整。
+
+## 如果 Dashboard 提示 wrangler.toml 管理
+
+如果你看到“此项目的绑定在通过 wrangler.toml 进行管理”，说明 Cloudflare 当前部署仍然看到了旧提交里的 `wrangler.toml`。
+
+处理方式：
+
+1. 确认 GitHub 最新提交里根目录没有 `wrangler.toml`。
+2. 在 Cloudflare Pages 里重新触发一次部署。
+3. 部署完成后刷新 Settings -> Functions 页面。
+
+从移除 `wrangler.toml` 的提交开始，绑定就应该可以回到 Dashboard 里管理。
 
 ## 本地开发
 
@@ -105,8 +123,10 @@ npm run dev
 
 ```bash
 npm run build
-npx wrangler pages deploy dist --project-name tempfile
+npx wrangler pages deploy dist
 ```
+
+手动部署时如果 Wrangler 要求选择 Pages 项目，选择你的 TempFile/air1-tempfile 项目即可。
 
 ## 注意事项
 
