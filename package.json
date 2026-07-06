@@ -1,0 +1,21 @@
+{
+  "name": "air1-tempfile",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/_worker.js",
+    "dev": "npm run build && wrangler pages dev dist --compatibility-date=2026-07-06 --kv TEMP_STORE",
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build && wrangler pages deploy dist"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.107.0"
+  }
+}

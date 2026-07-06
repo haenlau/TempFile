@@ -1,0 +1,3 @@
+name = "air1-tempfile"
+compatibility_date = "2026-07-06"
+pages_build_output_dir = "dist"
