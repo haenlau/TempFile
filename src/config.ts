@@ -1,18 +1,12 @@
-import type { AppConfig, Env } from "./types";
+import type { AppConfig, Env, LargeStorageBackend } from "./types";
 
 const MIB = 1024 * 1024;
 const DEFAULT_WEBDAV_BASE_URL = "https://higa.teracloud.jp/dav/air1/";
 
-function parsePositiveInteger(value: string | undefined, fallback: number, name: string): number {
-  if (!value) return fallback;
-
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive number`);
-  }
-
-  return Math.floor(parsed);
-}
+const MAX_UPLOAD_BYTES = 99 * MIB;
+const KV_MAX_BYTES = 24 * MIB;
+const EXPIRATION_TTL_SECONDS = 7 * 24 * 60 * 60;
+const MAX_FILE_COUNT = 20;
 
 function normalizeDirectoryUrl(value: string): string {
   const trimmed = value.trim();
@@ -20,16 +14,28 @@ function normalizeDirectoryUrl(value: string): string {
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
 }
 
+function parseLargeStorageBackend(value: string | undefined): LargeStorageBackend {
+  const normalized = value?.trim().toLowerCase() || "none";
+
+  if (
+    normalized === "none" ||
+    normalized === "r2" ||
+    normalized === "s3" ||
+    normalized === "webdav"
+  ) {
+    return normalized;
+  }
+
+  throw new Error("LARGE_STORAGE_BACKEND must be one of: none, r2, s3, webdav.");
+}
+
 export function getConfig(env: Env): AppConfig {
   return {
-    maxUploadBytes: parsePositiveInteger(env.MAX_UPLOAD_BYTES, 99 * MIB, "MAX_UPLOAD_BYTES"),
-    kvMaxBytes: parsePositiveInteger(env.KV_MAX_BYTES, 24 * MIB, "KV_MAX_BYTES"),
-    expirationTtlSeconds: parsePositiveInteger(
-      env.EXPIRATION_TTL_SECONDS,
-      7 * 24 * 60 * 60,
-      "EXPIRATION_TTL_SECONDS",
-    ),
-    maxFileCount: parsePositiveInteger(env.MAX_FILE_COUNT, 20, "MAX_FILE_COUNT"),
-    webdavBaseUrl: normalizeDirectoryUrl(env.WEBDAV_BASE_URL ?? DEFAULT_WEBDAV_BASE_URL),
+    maxUploadBytes: MAX_UPLOAD_BYTES,
+    kvMaxBytes: KV_MAX_BYTES,
+    expirationTtlSeconds: EXPIRATION_TTL_SECONDS,
+    maxFileCount: MAX_FILE_COUNT,
+    largeStorageBackend: parseLargeStorageBackend(env.LARGE_STORAGE_BACKEND),
+    webdavBaseUrl: normalizeDirectoryUrl(env.WEBDAV_URL ?? env.WEBDAV_BASE_URL ?? DEFAULT_WEBDAV_BASE_URL),
   };
 }

@@ -8,6 +8,13 @@ interface NotifyInput {
   metadata: FileRecordMetadata;
 }
 
+function getStorageLabel(metadata: FileRecordMetadata): string {
+  if (metadata.storage === "kv") return "KV";
+  if (metadata.storage === "r2") return "R2";
+  if (metadata.storage === "s3") return "S3";
+  return "WebDAV";
+}
+
 export async function sendWeComNotification(env: Env, input: NotifyInput): Promise<void> {
   if (!env.WECOM_WEBHOOK_URL) return;
 
@@ -17,13 +24,13 @@ export async function sendWeComNotification(env: Env, input: NotifyInput): Promi
   });
 
   const content = [
-    "Air1 TempFile: 新文件上传",
-    `文件名: ${input.filename}`,
-    `大小: ${formatBytes(input.size)}`,
-    `存储: ${input.metadata.storage === "kv" ? "KV" : "WebDAV"}`,
-    `时间: ${now}`,
-    `过期: ${expiresAt}`,
-    `下载地址: ${input.downloadUrl}`,
+    "Air1 TempFile: new file uploaded",
+    `File: ${input.filename}`,
+    `Size: ${formatBytes(input.size)}`,
+    `Storage: ${getStorageLabel(input.metadata)}`,
+    `Time: ${now}`,
+    `Expires: ${expiresAt}`,
+    `Download: ${input.downloadUrl}`,
   ].join("\n");
 
   const response = await fetch(env.WECOM_WEBHOOK_URL, {

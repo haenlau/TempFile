@@ -10,6 +10,7 @@
     "deploy": "npm run build && wrangler pages deploy dist"
   },
   "dependencies": {
+    "aws4fetch": "^1.0.20",
     "fflate": "^0.8.3"
   },
   "devDependencies": {

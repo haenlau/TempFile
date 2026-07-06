@@ -144,7 +144,7 @@ async function handleUpload(request: Request, env: Env): Promise<Response> {
     contentType: contentTypeForStorage,
     data,
     isZip,
-    webdavPrefix: isZip ? "zip" : "file",
+    objectPrefix: isZip ? "zip" : "file",
   });
 
   const downloadUrl = buildDownloadUrl(request, env, fileId);

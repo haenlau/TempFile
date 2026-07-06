@@ -2,10 +2,13 @@ import { zipSync } from "fflate";
 import type { AppConfig, BufferedUpload, Env, FileRecordMetadata } from "./types";
 import {
   buildContentDisposition,
-  makeWebDavFilename,
+  formatBytes,
+  makeStorageObjectKey,
   sanitizeZipEntryName,
   toArrayBuffer,
 } from "./utils";
+import { downloadFromR2, uploadToR2 } from "./r2";
+import { downloadFromS3, uploadToS3 } from "./s3";
 import { downloadFromWebDav, uploadToWebDav } from "./webdav";
 
 interface StoreFileInput {
@@ -14,7 +17,7 @@ interface StoreFileInput {
   contentType: string;
   data: ArrayBuffer | Uint8Array;
   isZip: boolean;
-  webdavPrefix: "file" | "zip";
+  objectPrefix: "file" | "zip";
 }
 
 export function zipUploads(files: BufferedUpload[]): Uint8Array {
@@ -60,13 +63,27 @@ export async function storeFile(
     return metadata;
   }
 
-  const webdavFilename = makeWebDavFilename(input.webdavPrefix, input.fileId, input.filename);
-  await uploadToWebDav(env, config, webdavFilename, input.contentType, binary);
+  if (config.largeStorageBackend === "none") {
+    throw new Error(
+      `File exceeds KV limit (${formatBytes(config.kvMaxBytes)}). Configure LARGE_STORAGE_BACKEND to enable large file storage.`,
+    );
+  }
+
+  const objectKey = makeStorageObjectKey(input.objectPrefix, input.fileId, input.filename);
+
+  if (config.largeStorageBackend === "r2") {
+    await uploadToR2(env, objectKey, input.contentType, binary);
+  } else if (config.largeStorageBackend === "s3") {
+    await uploadToS3(env, objectKey, input.contentType, binary);
+  } else {
+    await uploadToWebDav(env, config, objectKey, input.contentType, binary);
+  }
 
   const metadata: FileRecordMetadata = {
     ...baseMetadata,
-    storage: "webdav",
-    webdavFilename,
+    storage: config.largeStorageBackend,
+    objectKey,
+    webdavFilename: config.largeStorageBackend === "webdav" ? objectKey : undefined,
   };
 
   await env.TEMP_STORE.put(input.fileId, "", {
@@ -106,10 +123,45 @@ export async function getStoredFileResponse(
     return new Response(entry.value, { headers });
   }
 
-  if (metadata.storage === "webdav" && metadata.webdavFilename) {
+  if (metadata.storage === "r2" && metadata.objectKey) {
+    let body: ReadableStream | null;
+    try {
+      body = await downloadFromR2(env, metadata.objectKey);
+    } catch {
+      return new Response("Storage unavailable", { status: 502 });
+    }
+
+    if (!body) {
+      return new Response("File not found", { status: 404 });
+    }
+
+    return new Response(body, { status: 200, headers });
+  }
+
+  if (metadata.storage === "s3" && metadata.objectKey) {
     let response: Response;
     try {
-      response = await downloadFromWebDav(env, config, metadata.webdavFilename);
+      response = await downloadFromS3(env, metadata.objectKey);
+    } catch {
+      return new Response("Storage unavailable", { status: 502 });
+    }
+
+    if (!response.ok || !response.body) {
+      return new Response("File not found", { status: 404 });
+    }
+
+    return new Response(response.body, { status: 200, headers });
+  }
+
+  if (metadata.storage === "webdav" && (metadata.objectKey || metadata.webdavFilename)) {
+    const objectKey = metadata.objectKey || metadata.webdavFilename;
+    if (!objectKey) {
+      return new Response("Invalid file record", { status: 500 });
+    }
+
+    let response: Response;
+    try {
+      response = await downloadFromWebDav(env, config, objectKey);
     } catch {
       return new Response("Storage unavailable", { status: 502 });
     }

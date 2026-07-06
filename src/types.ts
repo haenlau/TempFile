@@ -1,25 +1,32 @@
 export interface Env {
   TEMP_STORE: KVNamespace;
+  R2_BUCKET?: R2Bucket;
+  LARGE_STORAGE_BACKEND?: string;
   WEBDAV_ACCOUNT?: string;
   WEBDAV_PASSWORD?: string;
+  WEBDAV_URL?: string;
   WECOM_WEBHOOK_URL?: string;
   WEBDAV_BASE_URL?: string;
   PUBLIC_BASE_URL?: string;
-  EXPIRATION_TTL_SECONDS?: string;
-  MAX_UPLOAD_BYTES?: string;
-  KV_MAX_BYTES?: string;
-  MAX_FILE_COUNT?: string;
+  S3_ENDPOINT?: string;
+  S3_BUCKET?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_REGION?: string;
 }
+
+export type LargeStorageBackend = "none" | "r2" | "s3" | "webdav";
 
 export interface AppConfig {
   maxUploadBytes: number;
   kvMaxBytes: number;
   expirationTtlSeconds: number;
   maxFileCount: number;
+  largeStorageBackend: LargeStorageBackend;
   webdavBaseUrl: string;
 }
 
-export type StorageKind = "kv" | "webdav";
+export type StorageKind = "kv" | "r2" | "s3" | "webdav";
 
 export interface FileRecordMetadata {
   filename: string;
@@ -29,6 +36,7 @@ export interface FileRecordMetadata {
   isZip: boolean;
   createdAt: string;
   expiresAt: string;
+  objectKey?: string;
   webdavFilename?: string;
 }
 

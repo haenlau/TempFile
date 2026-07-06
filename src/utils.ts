@@ -111,7 +111,7 @@ export function sanitizeZipEntryName(name: string, usedNames: Set<string>): stri
   return candidate;
 }
 
-export function makeWebDavFilename(prefix: "file" | "zip", fileId: string, filename: string): string {
+export function makeStorageObjectKey(prefix: "file" | "zip", fileId: string, filename: string): string {
   const safeName = filename
     .replace(/[\u0000-\u001f\u007f/\\?%*:|"<>]/g, "_")
     .replace(/\s+/g, "_")
