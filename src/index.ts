@@ -449,7 +449,7 @@ export default {
       if (request.method === "GET") {
         const segments = url.pathname.split("/").filter(Boolean);
         if (segments.length === 1 && isDownloadId(segments[0])) {
-          return getStoredFileResponse(env, getConfig(env), segments[0], ctx);
+          return getStoredFileResponse(env, getConfig(env), segments[0]);
         }
       }
 
