@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 
-const FILE_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const FILE_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
+const FILE_ID_LENGTH = 6;
 const RESERVED_PATHS = new Set([
   "api",
   "assets",
@@ -40,7 +41,7 @@ export function formatBytes(size: number): string {
   return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-export function createFileId(length = 12): string {
+export function createFileId(length = FILE_ID_LENGTH): string {
   let id = "";
   const bytes = new Uint8Array(length * 2);
 
@@ -59,15 +60,17 @@ export function createFileId(length = 12): string {
 export async function generateUniqueFileId(env: Env): Promise<string> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const id = createFileId();
+    if (RESERVED_PATHS.has(id)) continue;
+
     const existing = await env.TEMP_STORE.get(id);
     if (!existing) return id;
   }
 
-  return createFileId(16);
+  return createFileId();
 }
 
 export function isDownloadId(id: string): boolean {
-  return !RESERVED_PATHS.has(id) && /^[A-Za-z0-9]{10,32}$/.test(id);
+  return !RESERVED_PATHS.has(id) && (/^[0-9a-z]{6}$/.test(id) || /^[A-Za-z0-9]{10,32}$/.test(id));
 }
 
 export function toArrayBuffer(data: Uint8Array): ArrayBuffer {
