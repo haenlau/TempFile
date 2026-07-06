@@ -30,6 +30,7 @@ Air1 TempFile 是部署在 Cloudflare 上的临时文件上传站。这个仓库
 - 小文件存入 Cloudflare KV。
 - 大文件可选转存 R2、S3 或 WebDAV。
 - 多文件自动打包为 ZIP。
+- 下载链接不存在或过期时显示中文提示页。
 - 上传成功后可发送企业微信或 Telegram Bot 通知，也可以两个通道同时发送。
 
 ## 项目结构
@@ -195,3 +196,4 @@ npx wrangler pages deploy dist
 - 上传接口保持旧版公开上传行为，没有上传口令。
 - KV 的 TTL 只会删除 KV 里的记录。R2/S3/WebDAV 上的大文件本体不会被 KV 自动删除，需要定期清理后端存储。
 - 多文件 ZIP 会占用 Worker CPU 和内存，建议保持单次上传在 99 MiB 或更低。
+- 本项目不是超大文件传输工具。前端和后端都会限制单次上传约 99 MiB；500 GB 这类请求通常会先被 Cloudflare 平台请求体限制拦截，无法进入 Worker 正常处理。

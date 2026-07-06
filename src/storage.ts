@@ -1,4 +1,5 @@
 import { zipSync } from "fflate";
+import { downloadUnavailableResponse } from "./download-page";
 import type { AppConfig, BufferedUpload, Env, FileRecordMetadata } from "./types";
 import {
   buildContentDisposition,
@@ -104,7 +105,7 @@ export async function getStoredFileResponse(
   });
 
   if (!entry.metadata) {
-    return new Response("File not found", { status: 404 });
+    return downloadUnavailableResponse();
   }
 
   const metadata = entry.metadata;
@@ -117,7 +118,7 @@ export async function getStoredFileResponse(
 
   if (metadata.storage === "kv") {
     if (!entry.value) {
-      return new Response("File not found", { status: 404 });
+      return downloadUnavailableResponse();
     }
 
     return new Response(entry.value, { headers });
@@ -132,7 +133,7 @@ export async function getStoredFileResponse(
     }
 
     if (!body) {
-      return new Response("File not found", { status: 404 });
+      return downloadUnavailableResponse();
     }
 
     return new Response(body, { status: 200, headers });
@@ -147,7 +148,7 @@ export async function getStoredFileResponse(
     }
 
     if (!response.ok || !response.body) {
-      return new Response("File not found", { status: 404 });
+      return downloadUnavailableResponse();
     }
 
     return new Response(response.body, { status: 200, headers });
@@ -167,7 +168,7 @@ export async function getStoredFileResponse(
     }
 
     if (!response.ok || !response.body) {
-      return new Response("File not found", { status: 404 });
+      return downloadUnavailableResponse();
     }
 
     return new Response(response.body, { status: 200, headers });

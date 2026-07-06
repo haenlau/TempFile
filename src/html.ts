@@ -397,10 +397,15 @@ export const HTML = `<!DOCTYPE html>
  const files = Array.from(fileInput.files);
  if (!files.length) return alert('\u8BF7\u9009\u62E9\u81F3\u5C11\u4E00\u4E2A\u6587\u4EF6');
 
+ let totalSize = 0;
  for (const file of files) {
+ totalSize += file.size;
  if (file.size > 99 * 1024 * 1024) {
  return alert('\u300C' + file.name + '\u300D\u4E0D\u80FD\u8D85\u8FC7 99MB');
  }
+ }
+ if (totalSize > 99 * 1024 * 1024) {
+ return alert('\u5355\u6B21\u4E0A\u4F20\u603B\u5927\u5C0F\u4E0D\u80FD\u8D85\u8FC7 99MB');
  }
 
  resultCard.classList.remove('show');
@@ -478,7 +483,12 @@ export const HTML = `<!DOCTYPE html>
  }
  } else {
  console.error('Upload error:', xhr.statusText);
- alert('\u4E0A\u4F20\u5931\u8D25: ' + xhr.statusText);
+ let message = xhr.statusText || '\u4E0A\u4F20\u5931\u8D25';
+ try {
+ const errorRes = JSON.parse(xhr.responseText || '{}');
+ if (errorRes.error) message = errorRes.error;
+ } catch (parseError) {}
+ alert('\u4E0A\u4F20\u5931\u8D25: ' + message);
  }
  resetUploadUI();
  });

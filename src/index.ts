@@ -20,6 +20,7 @@ import {
 } from "./utils";
 
 const UPLOAD_PATHS = new Set(["/api/upload", "/api/upload-public"]);
+const MULTIPART_OVERHEAD_ALLOWANCE_BYTES = 1024 * 1024;
 
 function htmlResponse(): Response {
   return new Response(HTML, {
@@ -98,6 +99,14 @@ function getUploaderIp(request: Request): string {
   return forwardedFor || "unknown";
 }
 
+function getContentLength(request: Request): number | null {
+  const value = request.headers.get("Content-Length");
+  if (!value) return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) {
@@ -105,7 +114,26 @@ async function handleUpload(request: Request, env: Env, ctx: ExecutionContext): 
   }
 
   const config = getConfig(env);
-  const formData = await request.formData();
+  const contentLength = getContentLength(request);
+  if (
+    contentLength !== null &&
+    contentLength > config.maxUploadBytes + MULTIPART_OVERHEAD_ALLOWANCE_BYTES
+  ) {
+    return jsonResponse(
+      { error: `上传内容超过 ${formatBytes(config.maxUploadBytes)}，请压缩或拆分后再上传。` },
+      { status: 413 },
+    );
+  }
+
+  let formData: FormData;
+  try {
+    formData = await request.formData();
+  } catch {
+    return jsonResponse(
+      { error: "上传内容无法解析，可能超过平台限制或不是有效的表单数据。" },
+      { status: 413 },
+    );
+  }
   const files = (formData.getAll("file") as unknown[]).filter(isUploadFile);
   const validationError = validateFiles(files, config.maxUploadBytes, config.maxFileCount);
   if (validationError) return validationError;
